@@ -1,0 +1,2454 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PhonoPitch Lab · Live Phonetics Analyzer</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+          boxShadow: {
+            glow: '0 0 45px rgba(59,130,246,.22)',
+            soft: '0 22px 65px rgba(15,23,42,.14)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    canvas { image-rendering: auto; }
+
+    .glass {
+      background: rgba(255,255,255,.83);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,.72);
+    }
+
+    .dark .glass {
+      background: rgba(15,23,42,.78);
+      border-color: rgba(148,163,184,.18);
+    }
+
+    .meter-bar { transition: width .05s linear; }
+
+    input[type="range"] { accent-color: #2563eb; }
+
+    select {
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(1em + 2px),
+        calc(100% - 13px) calc(1em + 2px);
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
+
+    .toast-in { animation: toastIn .18s ease-out both; }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(8px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
+  <div class="fixed inset-0 -z-10 overflow-hidden">
+    <div class="absolute -top-32 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-blue-400/30 blur-3xl dark:bg-blue-700/30"></div>
+    <div class="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-cyan-300/30 blur-3xl dark:bg-cyan-700/20"></div>
+    <div class="absolute bottom-20 left-0 h-72 w-72 rounded-full bg-violet-300/25 blur-3xl dark:bg-violet-700/20"></div>
+  </div>
+
+  <div id="toast" class="pointer-events-none fixed right-5 top-5 z-50 hidden rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-soft dark:bg-white dark:text-slate-950">
+    Saved
+  </div>
+
+  <main class="mx-auto max-w-[1550px] px-4 py-6 sm:px-6 lg:px-8">
+    <header class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <section>
+        <div class="mb-2 inline-flex items-center gap-2 rounded-full bg-blue-600/10 px-3 py-1 text-sm font-semibold text-blue-700 dark:text-blue-300">
+          <i data-lucide="mic-2" class="h-4 w-4"></i>
+          Live phonetics classroom lab
+        </div>
+        <h1 class="text-3xl font-black tracking-tight sm:text-4xl">
+  PhonoPitch Lab
+</h1>
+        <p class="mt-2 max-w-4xl text-slate-600 dark:text-slate-300">
+          Record, replay and inspect speech with median-filtered F0, wideband/narrowband spectrograms, and synchronized waveform, pitch and spectrogram cursors.
+        </p>
+      </section>
+
+      <section class="flex flex-wrap gap-2">
+        <button id="startBtn" class="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
+          <i data-lucide="play" class="h-5 w-5"></i>
+          Start Capture
+        </button>
+        <button id="recordBtn" disabled class="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 font-bold text-white opacity-50 shadow-lg shadow-rose-600/20 transition hover:bg-rose-700 disabled:cursor-not-allowed">
+          <i data-lucide="circle-dot" class="h-5 w-5"></i>
+          Record
+        </button>
+        <button id="freezeBtn" disabled class="inline-flex items-center gap-2 rounded-2xl bg-cyan-600 px-4 py-3 font-bold text-white opacity-50 shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700 disabled:cursor-not-allowed">
+          <i data-lucide="pause" class="h-5 w-5"></i>
+          Freeze
+        </button>
+        <button id="stopBtn" disabled class="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-bold text-white opacity-50 transition hover:bg-slate-800 disabled:cursor-not-allowed dark:bg-slate-100 dark:text-slate-900">
+          <i data-lucide="square" class="h-5 w-5"></i>
+          Stop
+        </button>
+        <button id="themeBtn" class="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 font-bold text-slate-800 shadow transition hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700">
+          <i data-lucide="moon" class="h-5 w-5"></i>
+          Theme
+        </button>
+      </section>
+    </header>
+
+    <section id="warningBox" class="mb-6 hidden rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
+      <strong>Warning:</strong> microphone access requires a compatible browser and either <code>https://</code>, <code>localhost</code>, or a local file.
+    </section>
+
+    <section class="grid gap-4 xl:grid-cols-[370px_1fr]">
+      <aside class="space-y-4">
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-extrabold">Input Panel</h2>
+            <span id="statusBadge" class="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              Idle
+            </span>
+          </div>
+
+          <div class="rounded-3xl bg-gradient-to-br from-blue-600 to-cyan-500 p-5 text-white shadow-lg">
+            <p class="text-sm font-semibold uppercase tracking-wide text-white/80">Current F0</p>
+            <div class="mt-2 flex items-end gap-2">
+              <span id="pitchValue" class="text-6xl font-black tabular-nums">—</span>
+              <span class="pb-2 text-xl font-bold text-white/80">Hz</span>
+            </div>
+            <p id="noteValue" class="mt-2 text-lg font-bold text-white/90">Note: —</p>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="rounded-2xl bg-white/70 p-4 dark:bg-slate-900/60">
+              <p class="text-xs font-bold uppercase text-slate-500">Average</p>
+              <p class="mt-1 text-2xl font-black tabular-nums"><span id="avgValue">—</span> Hz</p>
+            </div>
+            <div class="rounded-2xl bg-white/70 p-4 dark:bg-slate-900/60">
+              <p class="text-xs font-bold uppercase text-slate-500">Range</p>
+              <p class="mt-1 text-2xl font-black tabular-nums"><span id="rangeValue">—</span></p>
+            </div>
+            <div class="rounded-2xl bg-white/70 p-4 dark:bg-slate-900/60">
+              <p class="text-xs font-bold uppercase text-slate-500">Confidence</p>
+              <p class="mt-1 text-2xl font-black tabular-nums"><span id="clarityValue">—</span>%</p>
+            </div>
+            <div class="rounded-2xl bg-white/70 p-4 dark:bg-slate-900/60">
+              <p class="text-xs font-bold uppercase text-slate-500">Input Level</p>
+              <p class="mt-1 text-2xl font-black tabular-nums"><span id="rmsValue">—</span></p>
+            </div>
+          </div>
+
+          <div class="mt-5">
+            <div class="mb-2 flex items-center justify-between text-sm font-bold">
+              <span>Input Volume</span>
+              <span id="volumePercent">0%</span>
+            </div>
+            <div class="relative h-4 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              <div id="volumeBar" class="meter-bar h-full w-0 rounded-full bg-blue-600"></div>
+              <div id="thresholdMarker" class="absolute top-0 h-full w-[3px] bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,.75)]"></div>
+            </div>
+            <div class="mt-2 flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <span>Noise</span>
+              <span>Threshold</span>
+              <span>Voice</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-extrabold">Playback</h2>
+            <i data-lucide="audio-lines" class="h-5 w-5 text-slate-500"></i>
+          </div>
+
+          <audio id="audioPlayer" class="hidden"></audio>
+
+          <div class="mb-3 rounded-2xl bg-white/70 p-4 dark:bg-slate-900/60">
+            <div class="mb-2 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+              <span id="playbackTime">00:00.00</span>
+              <span id="playbackTotal">00:00.00</span>
+            </div>
+            <input id="playbackSeek" disabled type="range" min="0" max="0" step="0.01" value="0" class="w-full opacity-50 disabled:cursor-not-allowed">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button id="playAnalysisBtn" disabled class="rounded-xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white opacity-50 shadow hover:bg-emerald-700 disabled:cursor-not-allowed">
+              Play Analysis
+            </button>
+            <button id="pauseAnalysisBtn" disabled class="rounded-xl bg-slate-900 px-3 py-3 text-sm font-bold text-white opacity-50 shadow hover:bg-slate-800 disabled:cursor-not-allowed dark:bg-slate-100 dark:text-slate-900">
+              Pause
+            </button>
+          </div>
+
+          <label class="mt-4 block">
+            <span class="mb-2 block text-sm font-bold">Playback speed</span>
+            <select id="playbackRate" class="w-full rounded-xl bg-white px-3 py-2 pr-8 text-sm font-bold text-slate-800 shadow dark:bg-slate-800 dark:text-slate-100">
+              <option value="0.5">0.5×</option>
+              <option value="0.75">0.75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.25">1.25×</option>
+              <option value="1.5">1.5×</option>
+            </select>
+          </label>
+
+          <div class="mt-4 rounded-2xl bg-white/70 p-4 text-sm dark:bg-slate-900/60">
+            <p class="font-extrabold">Recorded clip</p>
+            <p class="mt-1 text-slate-600 dark:text-slate-300">
+              Duration: <span id="recordingDuration">—</span>
+            </p>
+          </div>
+        </article>
+
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-extrabold">Advanced Settings</h2>
+            <i data-lucide="sliders-horizontal" class="h-5 w-5 text-slate-500"></i>
+          </div>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Minimum F0: <span id="minF0Label">50</span> Hz</span>
+            <input id="minF0" type="range" min="40" max="200" value="50" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Maximum F0: <span id="maxF0Label">500</span> Hz</span>
+            <input id="maxF0" type="range" min="180" max="800" value="500" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Voice Threshold: <span id="thresholdLabel">0.015</span></span>
+            <input id="threshold" type="range" min="0.005" max="0.06" step="0.001" value="0.015" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Smoothing: <span id="smoothLabel">0.12</span></span>
+            <input id="smoothing" type="range" min="0" max="0.9" step="0.05" value="0.12" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">YIN Voicing Threshold: <span id="yinThresholdLabel">0.15</span></span>
+            <input id="yinThreshold" type="range" min="0.05" max="0.30" step="0.01" value="0.15" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Pitch Median Filter</span>
+            <select id="pitchMedian" class="w-full rounded-xl bg-white px-3 py-2 pr-8 text-sm font-bold text-slate-800 shadow dark:bg-slate-800 dark:text-slate-100">
+              <option value="1">Off</option>
+              <option value="3" selected>3-point median</option>
+              <option value="5">5-point median</option>
+            </select>
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Spectrogram Mode</span>
+            <select id="fftMode" class="w-full rounded-xl bg-white px-3 py-2 pr-8 text-sm font-bold text-slate-800 shadow dark:bg-slate-800 dark:text-slate-100">
+              <option value="wide">View Formants · Wideband</option>
+              <option value="balanced" selected>Balanced</option>
+              <option value="narrow">View Harmonics · Narrowband</option>
+            </select>
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Frequency Scale</span>
+            <select id="frequencyScale" class="w-full rounded-xl bg-white px-3 py-2 pr-8 text-sm font-bold text-slate-800 shadow dark:bg-slate-800 dark:text-slate-100">
+              <option value="linear" selected>Linear</option>
+              <option value="mel">Mel-like</option>
+              <option value="log">Logarithmic</option>
+            </select>
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Time Window: <span id="timeWindowLabel">10</span>s</span>
+            <input id="timeWindow" type="range" min="5" max="25" step="1" value="10" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Line Width: <span id="lineWidthLabel">7</span> px</span>
+            <input id="lineWidth" type="range" min="2" max="12" step="1" value="7" class="w-full">
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Spectrogram Zoom</span>
+            <select id="spectrogramMaxHz" class="w-full rounded-xl bg-white px-3 py-2 pr-8 text-sm font-bold text-slate-800 shadow dark:bg-slate-800 dark:text-slate-100">
+              <option value="5000">0–5000 Hz · full view</option>
+              <option value="4000">0–4000 Hz</option>
+              <option value="3000">0–3000 Hz · vowels</option>
+              <option value="2000">0–2000 Hz · F1/F2</option>
+              <option value="1000">0–1000 Hz · F1</option>
+            </select>
+          </label>
+
+          <label class="mb-4 block">
+            <span class="mb-2 block text-sm font-bold">Spectrogram Color</span>
+            <select id="colormap" class="w-full rounded-xl bg-white px-3 py-2 pr-8 text-sm font-bold text-slate-800 shadow dark:bg-slate-800 dark:text-slate-100">
+              <option value="blue">Blue / Cyan</option>
+              <option value="green">Phosphor Green</option>
+              <option value="fire">Fire / Amber</option>
+              <option value="magma">Magma / Purple</option>
+              <option value="gray">Grayscale</option>
+            </select>
+          </label>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button id="presetLowBtn" class="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100">
+              Low Voice
+            </button>
+            <button id="presetHighBtn" class="rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100">
+              High Voice
+            </button>
+          </div>
+        </article>
+
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <h2 class="mb-4 text-lg font-extrabold">Actions</h2>
+          <div class="grid gap-2">
+            <button id="clearBtn" class="rounded-xl bg-white px-3 py-3 text-sm font-bold text-slate-700 shadow hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700">
+              Clear Current Session
+            </button>
+            <button id="saveSessionBtn" class="rounded-xl bg-blue-600 px-3 py-3 text-sm font-bold text-white shadow hover:bg-blue-700">
+              Save Session
+            </button>
+            <button id="setReferenceBtn" class="rounded-xl bg-violet-600 px-3 py-3 text-sm font-bold text-white shadow hover:bg-violet-700">
+              Set as Reference
+            </button>
+            <button id="exportCsvBtn" class="rounded-xl bg-slate-900 px-3 py-3 text-sm font-bold text-white shadow hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900">
+              Export CSV
+            </button>
+            <button id="exportImageBtn" class="rounded-xl bg-cyan-600 px-3 py-3 text-sm font-bold text-white shadow hover:bg-cyan-700">
+              Export Image
+            </button>
+          </div>
+
+          <div class="mt-5 rounded-2xl bg-blue-600/10 p-4 text-sm text-blue-950 dark:text-blue-100">
+            <p class="font-extrabold">Classroom tip</p>
+            <p class="mt-1">Record a student, play it back, and inspect waveform, pitch and spectrogram with a synchronized cursor.</p>
+          </div>
+        </article>
+      </aside>
+
+      <section class="space-y-4">
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-lg font-extrabold">Waveform</h2>
+              <p class="text-sm text-slate-600 dark:text-slate-300">
+                Amplitude envelope of the current or recorded utterance.
+              </p>
+            </div>
+            <span id="recordingBadge" class="hidden rounded-full bg-rose-600 px-3 py-2 text-xs font-bold text-white">
+              Recording
+            </span>
+          </div>
+          <div class="relative overflow-hidden rounded-3xl bg-white shadow-inner dark:bg-slate-950">
+            <canvas id="waveformCanvas" class="h-[180px] w-full"></canvas>
+          </div>
+        </article>
+
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-lg font-extrabold">Live Pitch Trace</h2>
+              <p class="text-sm text-slate-600 dark:text-slate-300">
+                Timestamped F0 samples, synchronized with audio playback.
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs font-bold">
+              <select id="pitchZoom" class="rounded-xl bg-blue-600/10 px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 dark:bg-blue-600/10 border-0 cursor-pointer">
+                <option value="auto">Auto range</option>
+                <option value="50,200">50–200 Hz · bass</option>
+                <option value="50,300">50–300 Hz · low voice</option>
+                <option value="80,300">80–300 Hz · male</option>
+                <option value="100,400">100–400 Hz · female</option>
+                <option value="150,500">150–500 Hz · high voice</option>
+                <option value="50,500">50–500 Hz · full</option>
+              </select>
+              <span class="rounded-full bg-blue-600/10 px-3 py-2 text-blue-700 dark:text-blue-300">
+                <span id="canvasScale">50–500 Hz</span>
+              </span>
+              <span id="freezeBadge" class="hidden rounded-full bg-cyan-600 px-3 py-2 text-white">
+                Screen Frozen
+              </span>
+            </div>
+          </div>
+          <div class="relative overflow-hidden rounded-3xl bg-white shadow-inner dark:bg-slate-950">
+            <canvas id="pitchCanvas" class="h-[310px] w-full"></canvas>
+          </div>
+        </article>
+
+        <article class="glass rounded-3xl p-5 shadow-glow">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-lg font-extrabold">Live Spectrogram</h2>
+              <p class="text-sm text-slate-600 dark:text-slate-300">
+                Wideband/narrowband modes, optional perceptual frequency scale, and clean 1000/2000/3000 Hz rulers when visible.
+              </p>
+            </div>
+            <span class="rounded-full bg-cyan-600/10 px-3 py-2 text-xs font-bold text-cyan-700 dark:text-cyan-300">
+              Range: <span id="spectrogramRangeLabel">0–5000 Hz</span>
+            </span>
+          </div>
+          <div class="relative overflow-hidden rounded-3xl bg-slate-950 shadow-inner">
+            <canvas id="spectrogramCanvas" class="h-[480px] w-full"></canvas>
+          </div>
+        </article>
+
+        <section class="grid gap-4 lg:grid-cols-3">
+          <article class="glass rounded-3xl p-5 shadow-glow">
+            <h2 class="mb-4 text-lg font-extrabold">Saved Sessions</h2>
+            <div id="sessionsList" class="space-y-3 text-sm"></div>
+          </article>
+
+          <article class="glass rounded-3xl p-5 shadow-glow">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-lg font-extrabold">Acoustic Statistics</h2>
+              <i data-lucide="bar-chart-2" class="h-5 w-5 text-blue-600"></i>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="flex justify-between border-b border-slate-200/50 pb-1.5 dark:border-slate-800/50">
+                <span class="text-slate-500 dark:text-slate-400">Mean F0</span>
+                <span id="statMean" class="font-bold tabular-nums">— Hz</span>
+              </div>
+              <div class="flex justify-between border-b border-slate-200/50 pb-1.5 dark:border-slate-800/50">
+                <span class="text-slate-500 dark:text-slate-400">Median F0</span>
+                <span id="statMedian" class="font-bold tabular-nums">— Hz</span>
+              </div>
+              <div class="flex justify-between border-b border-slate-200/50 pb-1.5 dark:border-slate-800/50">
+                <span class="text-slate-500 dark:text-slate-400">Min F0</span>
+                <span id="statMin" class="font-bold tabular-nums">— Hz</span>
+              </div>
+              <div class="flex justify-between border-b border-slate-200/50 pb-1.5 dark:border-slate-800/50">
+                <span class="text-slate-500 dark:text-slate-400">Max F0</span>
+                <span id="statMax" class="font-bold tabular-nums">— Hz</span>
+              </div>
+              <div class="flex justify-between border-b border-slate-200/50 pb-1.5 dark:border-slate-800/50">
+                <span class="text-slate-500 dark:text-slate-400">F0 Range</span>
+                <span id="statRange" class="font-bold tabular-nums">— Hz</span>
+              </div>
+              <div class="flex justify-between border-b border-slate-200/50 pb-1.5 dark:border-slate-800/50">
+                <span class="text-slate-500 dark:text-slate-400">Range (Semitones)</span>
+                <span id="statRangeSemitones" class="font-bold tabular-nums">— ST</span>
+              </div>
+              <div class="flex justify-between pb-1">
+                <span class="text-slate-500 dark:text-slate-400">Std. Dev. (SD)</span>
+                <span id="statSd" class="font-bold tabular-nums">— Hz</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="glass rounded-3xl p-5 shadow-glow">
+            <h2 class="mb-4 text-lg font-extrabold">Technical Notes</h2>
+            <ul class="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+              <li class="flex gap-2"><i data-lucide="check-circle-2" class="mt-0.5 h-4 w-4 shrink-0 text-blue-600"></i><span>F0 is estimated with a simplified YIN algorithm and optional median filtering.</span></li>
+              <li class="flex gap-2"><i data-lucide="audio-lines" class="mt-0.5 h-4 w-4 shrink-0 text-blue-600"></i><span>Audio recording uses the browser MediaRecorder API; analysis remains local.</span></li>
+              <li class="flex gap-2"><i data-lucide="activity" class="mt-0.5 h-4 w-4 shrink-0 text-cyan-500"></i><span>Playback cursor is synchronized across waveform, pitch and spectrogram.</span></li>
+              <li class="flex gap-2"><i data-lucide="shield-check" class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"></i><span>Audio is processed locally in the browser.</span></li>
+              <li class="flex gap-2"><i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0 text-amber-500"></i><span>For formal formant analysis, validate with Praat/LPC.</span></li>
+            </ul>
+          </article>
+        </section>
+      </section>
+    </section>
+   
+  </main>
+  <footer class="mt-16 py-8 text-center text-xs tracking-wide text-slate-500 dark:text-slate-400">
+  <div>
+    <strong>PhonoPitch Lab</strong>
+  </div>
+  <div class="mt-1">
+    © 2026 Alfonso C. Rodríguez Fernández-Peña
+  </div>
+  <div class="mt-1 italic">
+    Developed for phonetics teaching and research
+  </div>
+</footer>
+</body>
+  <script>
+    const STORAGE_KEY = 'phonopitchlab-settings';
+    const SESSIONS_KEY = 'phonopitchlab-sessions';
+
+    const state = {
+      audioContext: null,
+      analyser: null,
+      pitchAnalyser: null,
+      specAnalyser: null,
+      source: null,
+      stream: null,
+      mediaRecorder: null,
+      recordChunks: [],
+      recordedBlob: null,
+      recordedUrl: null,
+      recording: false,
+      playingAnalysis: false,
+      playbackRaf: null,
+      timeData: null,
+      freqData: null,
+      rafId: null,
+      running: false,
+      frozen: false,
+      lastPitch: null,
+      pitchHoldFrames: 0,
+      pitchHistory: [],
+      waveformHistory: [],
+      sessionStart: 0,
+      frozenNow: null,
+      lastSpecTime: null,
+      specBuffer: null,
+      specBufferCtx: null,
+      analysisDuration: null,
+      specYToFftIndex: null,
+      colormapTable: null,
+      specSliceImageData: null,
+      largeSpecCanvas: null,
+      largeSpecCtx: null,
+      referencePitchHistory: null,
+      downsampleFactor: 1,
+      downsampledRate: 16000,
+      downsampledTimeData: null,
+      yinBuffer: null,
+      settings: {
+        minF0: 50,
+        maxF0: 500,
+        threshold: 0.015,
+        smoothing: 0.12,
+        yinThreshold: 0.15,
+        pitchMedian: 3,
+        fftMode: 'balanced',
+        frequencyScale: 'linear',
+        timeWindow: 10,
+        lineWidth: 7,
+        spectrogramMaxHz: 5000,
+        colormap: 'blue',
+        dark: false,
+        pitchViewMin: 0,
+        pitchViewMax: 0
+      }
+    };
+    // 0 means "use detection range" (minF0/maxF0)
+
+    const $ = (id) => document.getElementById(id);
+
+    const els = {
+      startBtn: $('startBtn'),
+      recordBtn: $('recordBtn'),
+      freezeBtn: $('freezeBtn'),
+      stopBtn: $('stopBtn'),
+      clearBtn: $('clearBtn'),
+      saveSessionBtn: $('saveSessionBtn'),
+      setReferenceBtn: $('setReferenceBtn'),
+      exportCsvBtn: $('exportCsvBtn'),
+      exportImageBtn: $('exportImageBtn'),
+      themeBtn: $('themeBtn'),
+      warningBox: $('warningBox'),
+      toast: $('toast'),
+      statusBadge: $('statusBadge'),
+      freezeBadge: $('freezeBadge'),
+      recordingBadge: $('recordingBadge'),
+      pitchValue: $('pitchValue'),
+      noteValue: $('noteValue'),
+      avgValue: $('avgValue'),
+      rangeValue: $('rangeValue'),
+      clarityValue: $('clarityValue'),
+      rmsValue: $('rmsValue'),
+      volumeBar: $('volumeBar'),
+      volumePercent: $('volumePercent'),
+      thresholdMarker: $('thresholdMarker'),
+      minF0: $('minF0'),
+      maxF0: $('maxF0'),
+      threshold: $('threshold'),
+      smoothing: $('smoothing'),
+      yinThreshold: $('yinThreshold'),
+      pitchMedian: $('pitchMedian'),
+      fftMode: $('fftMode'),
+      frequencyScale: $('frequencyScale'),
+      timeWindow: $('timeWindow'),
+      lineWidth: $('lineWidth'),
+      spectrogramMaxHz: $('spectrogramMaxHz'),
+      colormap: $('colormap'),
+      minF0Label: $('minF0Label'),
+      maxF0Label: $('maxF0Label'),
+      thresholdLabel: $('thresholdLabel'),
+      smoothLabel: $('smoothLabel'),
+      yinThresholdLabel: $('yinThresholdLabel'),
+      timeWindowLabel: $('timeWindowLabel'),
+      lineWidthLabel: $('lineWidthLabel'),
+      canvasScale: $('canvasScale'),
+      pitchZoom: $('pitchZoom'),
+      spectrogramRangeLabel: $('spectrogramRangeLabel'),
+      presetLowBtn: $('presetLowBtn'),
+      presetHighBtn: $('presetHighBtn'),
+      sessionsList: $('sessionsList'),
+      audioPlayer: $('audioPlayer'),
+      playbackSeek: $('playbackSeek'),
+      playbackTime: $('playbackTime'),
+      playbackTotal: $('playbackTotal'),
+      playAnalysisBtn: $('playAnalysisBtn'),
+      pauseAnalysisBtn: $('pauseAnalysisBtn'),
+      playbackRate: $('playbackRate'),
+      recordingDuration: $('recordingDuration')
+    };
+
+    const waveformCanvas = $('waveformCanvas');
+    const waveformCtx = waveformCanvas.getContext('2d');
+
+    const pitchCanvas = $('pitchCanvas');
+    const pitchCtx = pitchCanvas.getContext('2d');
+
+    const specCanvas = $('spectrogramCanvas');
+    const specCtx = specCanvas.getContext('2d');
+
+    const waveformLayout = { left: 66, right: 18, top: 12, bottom: 34 };
+    const pitchLayout = { left: 66, right: 18, top: 12, bottom: 34 };
+    const specLayout = { left: 88, right: 16, top: 12, bottom: 34 };
+
+    // Helper functions for downsampling, colormaps, stats, and speaker comparison
+
+    function downsampleBuffer(inputBuffer, outputBuffer, factor) {
+      const len = outputBuffer.length;
+      for (let i = 0; i < len; i++) {
+        let sum = 0;
+        for (let j = 0; j < factor; j++) {
+          sum += inputBuffer[i * factor + j];
+        }
+        outputBuffer[i] = sum / factor;
+      }
+    }
+
+    function updatePrecomputedSpectrogramMapping() {
+      const plot = getSpecPlot();
+      const h = Math.max(1, Math.round(plot.h));
+      const maxHz = state.settings.spectrogramMaxHz;
+      const nyquist = state.audioContext ? state.audioContext.sampleRate / 2 : 22050;
+      const fftLength = state.freqData ? state.freqData.length : 1024;
+
+      state.specYToFftIndex = new Int32Array(h);
+      for (let y = 0; y < h; y++) {
+        const norm = 1 - y / Math.max(1, h - 1);
+        const freq = normToHz(norm, maxHz);
+        const index = Math.min(fftLength - 1, Math.max(0, Math.floor((freq / nyquist) * fftLength)));
+        state.specYToFftIndex[y] = index;
+      }
+    }
+
+    function updatePrecomputedColormap() {
+      state.colormapTable = new Uint8Array(256 * 4);
+      const name = state.settings.colormap || 'blue';
+      for (let v = 0; v < 256; v++) {
+        const a = Math.pow(v / 255, 0.82);
+        let r, g, b;
+        if (name === 'green') {
+          r = Math.floor(4 + a * 44);
+          g = Math.floor(16 + a * 235);
+          b = Math.floor(8 + a * 62);
+        } else if (name === 'fire') {
+          r = Math.floor(10 + a * 245);
+          g = Math.floor(8 + a * 160);
+          b = Math.floor(4 + a * 34);
+        } else if (name === 'magma') {
+          r = Math.floor(16 + a * 229);
+          g = Math.floor(4 + a * 76);
+          b = Math.floor(28 + a * 185);
+        } else if (name === 'gray') {
+          const grayVal = Math.floor(6 + a * 245);
+          r = grayVal;
+          g = grayVal;
+          b = grayVal;
+        } else { // blue
+          r = Math.floor(4 + a * 175);
+          g = Math.floor(24 + a * 215);
+          b = Math.floor(64 + a * 191);
+        }
+        const offset = v * 4;
+        state.colormapTable[offset] = r;
+        state.colormapTable[offset + 1] = g;
+        state.colormapTable[offset + 2] = b;
+        state.colormapTable[offset + 3] = 255;
+      }
+    }
+
+    function ensureLargeCanvasWidth(requiredWidth) {
+      if (!state.largeSpecCanvas) {
+        state.largeSpecCanvas = document.createElement('canvas');
+        state.largeSpecCanvas.height = Math.max(1, Math.round(getSpecPlot().h));
+        state.largeSpecCanvas.width = Math.max(requiredWidth, 2048);
+        state.largeSpecCtx = state.largeSpecCanvas.getContext('2d', { willReadFrequently: true });
+        state.largeSpecCtx.fillStyle = '#020617';
+        state.largeSpecCtx.fillRect(0, 0, state.largeSpecCanvas.width, state.largeSpecCanvas.height);
+      } else if (requiredWidth > state.largeSpecCanvas.width) {
+        const old = state.largeSpecCanvas;
+        state.largeSpecCanvas = document.createElement('canvas');
+        state.largeSpecCanvas.height = old.height;
+        state.largeSpecCanvas.width = Math.max(requiredWidth, Math.round(old.width * 1.5));
+        state.largeSpecCtx = state.largeSpecCanvas.getContext('2d', { willReadFrequently: true });
+        state.largeSpecCtx.fillStyle = '#020617';
+        state.largeSpecCtx.fillRect(0, 0, state.largeSpecCanvas.width, state.largeSpecCanvas.height);
+        state.largeSpecCtx.drawImage(old, 0, 0);
+      }
+    }
+
+    function toggleReference() {
+      if (state.referencePitchHistory && state.referencePitchHistory.length > 0) {
+        state.referencePitchHistory = null;
+        els.setReferenceBtn.textContent = 'Set as Reference';
+        els.setReferenceBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700');
+        els.setReferenceBtn.classList.add('bg-violet-600', 'hover:bg-violet-700');
+        showToast('Reference pitch cleared');
+        renderAll(getDisplayNow());
+      } else {
+        if (!state.pitchHistory.length) {
+          showToast('No pitch data to set as reference');
+          return;
+        }
+        state.referencePitchHistory = JSON.parse(JSON.stringify(state.pitchHistory));
+        els.setReferenceBtn.textContent = 'Clear Reference';
+        els.setReferenceBtn.classList.remove('bg-violet-600', 'hover:bg-violet-700');
+        els.setReferenceBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
+        showToast('Reference pitch set');
+        renderAll(getDisplayNow());
+      }
+    }
+
+    function getVoicedOnset(history) {
+      if (!history || !history.length) return null;
+      const onset = history.find(p => p.pitch && p.pitch > 0);
+      return onset ? onset.time : null;
+    }
+
+    function renderReferencePitchTrace(ctx, plot, start, now) {
+      const refOnset = getVoicedOnset(state.referencePitchHistory);
+      const curOnset = getVoicedOnset(state.pitchHistory);
+
+      let timeShift = 0;
+      if (refOnset !== null && curOnset !== null) {
+        timeShift = curOnset - refOnset;
+      }
+
+      const visibleRef = state.referencePitchHistory.filter(p => {
+        if (!p.pitch || p.pitch <= 0) return false;
+        const alignedTime = p.time + timeShift;
+        return alignedTime >= start && alignedTime <= now;
+      });
+
+      if (!visibleRef.length) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(plot.x, plot.y, plot.w, plot.h);
+      ctx.clip();
+
+      ctx.lineWidth = Math.max(3, state.settings.lineWidth - 2);
+      ctx.strokeStyle = document.documentElement.classList.contains('dark')
+        ? 'rgba(148, 163, 184, 0.45)'
+        : 'rgba(71, 85, 105, 0.45)';
+      ctx.setLineDash([4, 4]);
+
+      const frameInterval = visibleRef.length > 1
+        ? (visibleRef[visibleRef.length - 1].time - visibleRef[0].time) / (visibleRef.length - 1)
+        : 0.02;
+      const silenceGap = Math.max(frameInterval * 3, 0.08);
+
+      ctx.beginPath();
+      let started = false;
+
+      visibleRef.forEach((point, index) => {
+        const alignedTime = point.time + timeShift;
+        const x = plot.x + ((alignedTime - start) / state.settings.timeWindow) * plot.w;
+        const y = pitchToY(point.pitch, plot);
+
+        const isSilenceBreak = index > 0 && (point.time - visibleRef[index - 1].time) > silenceGap;
+
+        if (!started || isSilenceBreak) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function calculateAcousticStats(historySegment) {
+      const voiced = historySegment
+        .filter(p => p.pitch && p.pitch > 0)
+        .map(p => p.pitch);
+
+      if (!voiced.length) {
+        return {
+          mean: null,
+          median: null,
+          min: null,
+          max: null,
+          range: null,
+          sd: null,
+          rangeSemitones: null
+        };
+      }
+
+      const min = Math.min(...voiced);
+      const max = Math.max(...voiced);
+      const range = max - min;
+
+      const sum = voiced.reduce((a, b) => a + b, 0);
+      const mean = sum / voiced.length;
+
+      const sorted = [...voiced].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+
+      const sqDiffSum = voiced.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0);
+      const sd = Math.sqrt(sqDiffSum / voiced.length);
+
+      const rangeSemitones = 12 * Math.log2(max / min);
+
+      return { mean, median, min, max, range, sd, rangeSemitones };
+    }
+
+    function updateAcousticStatsUI(history = state.pitchHistory) {
+      const stats = calculateAcousticStats(history);
+      
+      if (stats.mean !== null) {
+        $('statMean').textContent = `${stats.mean.toFixed(1)} Hz`;
+        $('statMedian').textContent = `${stats.median.toFixed(1)} Hz`;
+        $('statMin').textContent = `${stats.min.toFixed(0)} Hz`;
+        $('statMax').textContent = `${stats.max.toFixed(0)} Hz`;
+        $('statRange').textContent = `${stats.range.toFixed(1)} Hz`;
+        $('statRangeSemitones').textContent = `${stats.rangeSemitones.toFixed(1)} ST`;
+        $('statSd').textContent = `${stats.sd.toFixed(1)} Hz`;
+      } else {
+        $('statMean').textContent = '— Hz';
+        $('statMedian').textContent = '— Hz';
+        $('statMin').textContent = '— Hz';
+        $('statMax').textContent = '— Hz';
+        $('statRange').textContent = '— Hz';
+        $('statRangeSemitones').textContent = '— ST';
+        $('statSd').textContent = '— Hz';
+      }
+    }
+
+    function findClosestHistorySample(t) {
+      if (!state.pitchHistory.length) return null;
+      
+      let low = 0;
+      let high = state.pitchHistory.length - 1;
+      let closest = state.pitchHistory[0];
+      let minDiff = Math.abs(closest.time - t);
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const item = state.pitchHistory[mid];
+        const diff = Math.abs(item.time - t);
+
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = item;
+        }
+
+        if (item.time < t) {
+          low = mid + 1;
+        } else if (item.time > t) {
+          high = mid - 1;
+        } else {
+          return item;
+        }
+      }
+
+      if (minDiff < 0.15) {
+        return closest;
+      }
+      return null;
+    }
+
+    function updatePlaybackMetrics(t) {
+      const sample = findClosestHistorySample(t);
+      
+      if (sample) {
+        if (sample.pitch && sample.pitch > 0) {
+          els.pitchValue.textContent = sample.pitch.toFixed(1);
+          els.noteValue.textContent = `Note: ${frequencyToNote(sample.pitch)}`;
+          els.clarityValue.textContent = Math.round(sample.clarity * 100);
+        } else {
+          els.pitchValue.textContent = '—';
+          els.noteValue.textContent = 'Note: —';
+          els.clarityValue.textContent = '—';
+        }
+        
+        els.rmsValue.textContent = sample.rms.toFixed(3);
+        updateInputLevel(sample.rms);
+        
+        const voicedUpToT = state.pitchHistory
+          .filter(p => p.time <= t && p.pitch && p.pitch > 0)
+          .map(p => p.pitch);
+          
+        if (voicedUpToT.length) {
+          const avg = voicedUpToT.reduce((a, b) => a + b, 0) / voicedUpToT.length;
+          els.avgValue.textContent = avg.toFixed(1);
+        } else {
+          els.avgValue.textContent = '—';
+        }
+      } else {
+        els.pitchValue.textContent = '—';
+        els.noteValue.textContent = 'Note: —';
+        els.clarityValue.textContent = '—';
+        els.rmsValue.textContent = '—';
+        els.avgValue.textContent = '—';
+      }
+    }
+
+    function init() {
+      loadSettings();
+      applySettingsToUI();
+
+      [waveformCanvas, pitchCanvas, specCanvas].forEach(resizeCanvas);
+
+      resetSpectrogramBuffer();
+      renderAll();
+      renderSessions();
+
+      els.startBtn.addEventListener('click', start);
+      els.recordBtn.addEventListener('click', toggleRecording);
+      els.freezeBtn.addEventListener('click', toggleFreeze);
+      els.stopBtn.addEventListener('click', stop);
+      els.clearBtn.addEventListener('click', clearCurrentSession);
+      els.saveSessionBtn.addEventListener('click', saveCurrentSession);
+      els.setReferenceBtn.addEventListener('click', toggleReference);
+      els.exportCsvBtn.addEventListener('click', exportCsv);
+      els.exportImageBtn.addEventListener('click', exportImage);
+      els.themeBtn.addEventListener('click', toggleTheme);
+
+      els.playAnalysisBtn.addEventListener('click', playAnalysis);
+      els.pauseAnalysisBtn.addEventListener('click', pauseAnalysis);
+      els.playbackRate.addEventListener('change', () => {
+        els.audioPlayer.playbackRate = Number(els.playbackRate.value);
+      });
+
+      els.playbackSeek.addEventListener('input', () => {
+        const t = Number(els.playbackSeek.value);
+        els.audioPlayer.currentTime = t;
+        updatePlaybackUI(t);
+        updatePlaybackMetrics(t);
+        renderAll(t);
+      });
+
+      els.audioPlayer.addEventListener('play', () => {
+        state.playingAnalysis = true;
+        playbackLoop();
+      });
+
+      els.audioPlayer.addEventListener('pause', () => {
+        state.playingAnalysis = false;
+        if (state.playbackRaf) cancelAnimationFrame(state.playbackRaf);
+        updatePlaybackUI(els.audioPlayer.currentTime);
+        updatePlaybackMetrics(els.audioPlayer.currentTime);
+        renderAll(els.audioPlayer.currentTime);
+      });
+
+      els.audioPlayer.addEventListener('ended', () => {
+        state.playingAnalysis = false;
+        updatePlaybackUI(els.audioPlayer.currentTime);
+        updatePlaybackMetrics(els.audioPlayer.currentTime);
+        renderAll(els.audioPlayer.currentTime);
+      });
+
+      els.presetLowBtn.addEventListener('click', () => applyPreset(60, 250, 'Low voice preset applied'));
+      els.presetHighBtn.addEventListener('click', () => applyPreset(120, 600, 'High voice preset applied'));
+
+      els.pitchZoom.addEventListener('change', () => {
+        const val = els.pitchZoom.value;
+        if (val === 'auto') {
+          state.settings.pitchViewMin = 0;
+          state.settings.pitchViewMax = 0;
+        } else {
+          const [lo, hi] = val.split(',').map(Number);
+          state.settings.pitchViewMin = lo;
+          state.settings.pitchViewMax = hi;
+        }
+        saveSettings();
+        updateSettingLabels();
+        renderAll(getDisplayNow());
+      });
+
+      ['minF0', 'maxF0', 'threshold', 'smoothing', 'yinThreshold', 'timeWindow', 'lineWidth'].forEach(id => {
+        els[id].addEventListener('input', () => {
+          readSettingsFromUI();
+          saveSettings();
+          renderAll(getDisplayNow());
+        });
+      });
+
+
+      ['pitchMedian', 'fftMode', 'frequencyScale'].forEach(id => {
+        els[id].addEventListener('change', () => {
+          readSettingsFromUI();
+          saveSettings();
+          if (id === 'fftMode' && state.specAnalyser) applyFftMode();
+          resetSpectrogramBuffer();
+          renderAll(getDisplayNow());
+        });
+      });
+
+      els.spectrogramMaxHz.addEventListener('change', () => {
+        state.settings.spectrogramMaxHz = Number(els.spectrogramMaxHz.value);
+        updateSettingLabels();
+        saveSettings();
+        resetSpectrogramBuffer();
+        renderAll(getDisplayNow());
+      });
+
+      els.colormap.addEventListener('change', () => {
+        state.settings.colormap = els.colormap.value;
+        saveSettings();
+        resetSpectrogramBuffer();
+        renderAll(getDisplayNow());
+      });
+
+      window.addEventListener('resize', () => {
+        [waveformCanvas, pitchCanvas, specCanvas].forEach(resizeCanvas);
+        resetSpectrogramBuffer();
+        renderAll(getDisplayNow());
+      });
+
+      lucide.createIcons();
+    }
+
+    function resizeCanvas(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas._dpr = dpr;
+      canvas._cssW = Math.max(1, rect.width);
+      canvas._cssH = Math.max(1, rect.height);
+      canvas.width = Math.round(canvas._cssW * dpr);
+      canvas.height = Math.round(canvas._cssH * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function getWaveformPlot() {
+      return {
+        x: waveformLayout.left,
+        y: waveformLayout.top,
+        w: waveformCanvas._cssW - waveformLayout.left - waveformLayout.right,
+        h: waveformCanvas._cssH - waveformLayout.top - waveformLayout.bottom
+      };
+    }
+
+    function getPitchPlot() {
+      return {
+        x: pitchLayout.left,
+        y: pitchLayout.top,
+        w: pitchCanvas._cssW - pitchLayout.left - pitchLayout.right,
+        h: pitchCanvas._cssH - pitchLayout.top - pitchLayout.bottom
+      };
+    }
+
+    function getSpecPlot() {
+      return {
+        x: specLayout.left,
+        y: specLayout.top,
+        w: specCanvas._cssW - specLayout.left - specLayout.right,
+        h: specCanvas._cssH - specLayout.top - specLayout.bottom
+      };
+    }
+
+    function loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (saved) state.settings = { ...state.settings, ...saved };
+      } catch {}
+      document.documentElement.classList.toggle('dark', state.settings.dark);
+    }
+
+    function saveSettings() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+    }
+
+    function applySettingsToUI() {
+      els.minF0.value = state.settings.minF0;
+      els.maxF0.value = state.settings.maxF0;
+      els.threshold.value = state.settings.threshold;
+      els.smoothing.value = state.settings.smoothing;
+      els.yinThreshold.value = state.settings.yinThreshold;
+      els.pitchMedian.value = state.settings.pitchMedian;
+      els.fftMode.value = state.settings.fftMode;
+      els.frequencyScale.value = state.settings.frequencyScale;
+      els.timeWindow.value = state.settings.timeWindow;
+      els.lineWidth.value = state.settings.lineWidth;
+      els.spectrogramMaxHz.value = state.settings.spectrogramMaxHz;
+      els.colormap.value = state.settings.colormap || 'blue';
+
+      // Restore zoom selector
+      const vMin = state.settings.pitchViewMin || 0;
+      const vMax = state.settings.pitchViewMax || 0;
+      if (vMin && vMax) {
+        const key = `${vMin},${vMax}`;
+        if ([...els.pitchZoom.options].some(o => o.value === key)) {
+          els.pitchZoom.value = key;
+        } else {
+          els.pitchZoom.value = 'auto';
+        }
+      } else {
+        els.pitchZoom.value = 'auto';
+      }
+
+      updateSettingLabels();
+    }
+
+    function readSettingsFromUI() {
+      let minF0 = Number(els.minF0.value);
+      let maxF0 = Number(els.maxF0.value);
+
+      if (minF0 >= maxF0 - 40) {
+        minF0 = maxF0 - 40;
+        els.minF0.value = minF0;
+      }
+
+      state.settings.minF0 = minF0;
+      state.settings.maxF0 = maxF0;
+      state.settings.threshold = Number(els.threshold.value);
+      state.settings.smoothing = Number(els.smoothing.value);
+      state.settings.yinThreshold = Number(els.yinThreshold.value);
+      state.settings.pitchMedian = Number(els.pitchMedian.value);
+      state.settings.fftMode = els.fftMode.value;
+      state.settings.frequencyScale = els.frequencyScale.value;
+      state.settings.timeWindow = Number(els.timeWindow.value);
+      state.settings.lineWidth = Number(els.lineWidth.value);
+      updateSettingLabels();
+    }
+
+    function updateSettingLabels() {
+      els.minF0Label.textContent = state.settings.minF0;
+      els.maxF0Label.textContent = state.settings.maxF0;
+      els.thresholdLabel.textContent = Number(state.settings.threshold).toFixed(3);
+      els.smoothLabel.textContent = Number(state.settings.smoothing).toFixed(2);
+      els.yinThresholdLabel.textContent = Number(state.settings.yinThreshold).toFixed(2);
+      els.timeWindowLabel.textContent = state.settings.timeWindow;
+      els.lineWidthLabel.textContent = state.settings.lineWidth;
+      const viewMin = state.settings.pitchViewMin || state.settings.minF0;
+      const viewMax = state.settings.pitchViewMax || state.settings.maxF0;
+      els.canvasScale.textContent = `${viewMin}–${viewMax} Hz`;
+      els.spectrogramRangeLabel.textContent = `0–${state.settings.spectrogramMaxHz} Hz`;
+
+      const min = Number(els.threshold.min);
+      const max = Number(els.threshold.max);
+      const pct = ((state.settings.threshold - min) / (max - min)) * 100;
+      els.thresholdMarker.style.left = `${Math.max(0, Math.min(100, pct))}%`;
+    }
+
+    function applyPreset(min, max, message) {
+      state.settings.minF0 = min;
+      state.settings.maxF0 = max;
+      applySettingsToUI();
+      saveSettings();
+      renderAll(getDisplayNow());
+      showToast(message);
+    }
+
+
+    function applyFftMode() {
+      if (!state.specAnalyser) return;
+
+      const mode = state.settings.fftMode || 'balanced';
+
+      if (mode === 'wide') {
+        state.specAnalyser.fftSize = 512;
+        state.specAnalyser.smoothingTimeConstant = 0.05;
+      } else if (mode === 'narrow') {
+        state.specAnalyser.fftSize = 4096;
+        state.specAnalyser.smoothingTimeConstant = 0.12;
+      } else {
+        state.specAnalyser.fftSize = 2048;
+        state.specAnalyser.smoothingTimeConstant = 0.08;
+      }
+
+      state.freqData = new Uint8Array(state.specAnalyser.frequencyBinCount);
+    }
+
+    async function start() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        els.warningBox.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        state.stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        });
+
+        state.source = state.audioContext.createMediaStreamSource(state.stream);
+
+        state.pitchAnalyser = state.audioContext.createAnalyser();
+        state.pitchAnalyser.fftSize = 4096;
+        state.pitchAnalyser.smoothingTimeConstant = 0.05;
+        state.timeData = new Float32Array(state.pitchAnalyser.fftSize);
+
+        // Downsampling config for pitch tracking:
+        state.downsampleFactor = Math.max(1, Math.round(state.audioContext.sampleRate / 16000));
+        state.downsampledRate = state.audioContext.sampleRate / state.downsampleFactor;
+        state.downsampledTimeData = new Float32Array(Math.floor(4096 / state.downsampleFactor));
+        state.yinBuffer = null;
+
+        state.specAnalyser = state.audioContext.createAnalyser();
+        applyFftMode();
+
+        state.source.connect(state.pitchAnalyser);
+        state.source.connect(state.specAnalyser);
+        state.analyser = state.specAnalyser;
+
+        state.running = true;
+        state.frozen = false;
+        state.frozenNow = null;
+        state.sessionStart = performance.now();
+        state.lastSpecTime = performance.now();
+        state.pitchHistory = [];
+        state.waveformHistory = [];
+        state.lastPitch = null;
+        state.analysisDuration = null;
+
+        resetSpectrogramBuffer();
+        renderAll();
+
+        els.startBtn.disabled = true;
+        els.recordBtn.disabled = false;
+        els.freezeBtn.disabled = false;
+        els.stopBtn.disabled = false;
+
+        els.startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        els.recordBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        els.freezeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        els.stopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+        setStatus('Capturing', 'bg-emerald-600 text-white');
+        updateFreezeUI();
+
+        loop();
+      } catch (error) {
+        console.error(error);
+        els.warningBox.classList.remove('hidden');
+        els.warningBox.innerHTML = '<strong>Microphone access failed.</strong> Check browser permissions or try Chrome, Edge or Firefox.';
+      }
+    }
+
+    function stop() {
+      if (state.recording) stopRecording();
+
+      state.running = false;
+      state.frozen = false;
+      state.frozenNow = null;
+
+      if (state.rafId) cancelAnimationFrame(state.rafId);
+      if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+      if (state.audioContext) state.audioContext.close();
+
+      state.audioContext = null;
+      state.analyser = null;
+      state.pitchAnalyser = null;
+      state.specAnalyser = null;
+      state.source = null;
+      state.stream = null;
+
+      els.startBtn.disabled = false;
+      els.recordBtn.disabled = true;
+      els.freezeBtn.disabled = true;
+      els.stopBtn.disabled = true;
+
+      els.startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      els.recordBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      els.freezeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      els.stopBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      setStatus('Idle', 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300');
+      updateFreezeUI();
+      setPitchDisplay(null, 0);
+      renderAll(getDisplayNow());
+    }
+
+    function toggleRecording() {
+      if (!state.stream) return;
+
+      if (state.recording) stopRecording();
+      else startRecording();
+    }
+
+    function startRecording() {
+      try {
+        state.recordChunks = [];
+        state.recordedBlob = null;
+        state.recordedUrl = null;
+
+        // Reset histories and align session start with recording start
+        state.pitchHistory = [];
+        state.waveformHistory = [];
+        state.sessionStart = performance.now();
+        state.lastPitch = null;
+        state.pitchHoldFrames = 0;
+        resetSpectrogramBuffer();
+        updateAcousticStatsUI(); // Reset UI stats
+
+        const mime = getSupportedMimeType();
+        state.mediaRecorder = new MediaRecorder(state.stream, mime ? { mimeType: mime } : undefined);
+
+        state.mediaRecorder.ondataavailable = e => {
+          if (e.data && e.data.size) state.recordChunks.push(e.data);
+        };
+
+        state.mediaRecorder.onstop = () => {
+          state.recordedBlob = new Blob(state.recordChunks, { type: state.mediaRecorder.mimeType || 'audio/webm' });
+
+          if (state.recordedUrl) URL.revokeObjectURL(state.recordedUrl);
+          state.recordedUrl = URL.createObjectURL(state.recordedBlob);
+
+          els.audioPlayer.src = state.recordedUrl;
+          els.audioPlayer.playbackRate = Number(els.playbackRate.value);
+          state.analysisDuration = state.pitchHistory.length ? state.pitchHistory[state.pitchHistory.length - 1].time : getSessionSeconds();
+          els.recordingDuration.textContent = `${state.analysisDuration.toFixed(2)} s`;
+          els.playbackSeek.max = String(state.analysisDuration);
+          els.playbackSeek.value = '0';
+          updatePlaybackUI(0);
+
+          enablePlaybackControls();
+          showToast('Recording ready for playback');
+        };
+
+        state.mediaRecorder.start(100);
+        state.recording = true;
+
+        els.recordBtn.innerHTML = '<i data-lucide="square" class="h-5 w-5"></i> Stop Recording';
+        els.recordingBadge.classList.remove('hidden');
+
+        setStatus('Recording', 'bg-rose-600 text-white');
+        showToast('Recording started');
+        lucide.createIcons();
+      } catch (error) {
+        console.error(error);
+        showToast('Recording failed');
+      }
+    }
+
+    function stopRecording() {
+      if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+        state.mediaRecorder.stop();
+      }
+
+      state.recording = false;
+      els.recordBtn.innerHTML = '<i data-lucide="circle-dot" class="h-5 w-5"></i> Record';
+      els.recordingBadge.classList.add('hidden');
+
+      setStatus(state.running ? 'Capturing' : 'Idle', state.running ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300');
+      showToast('Recording stopped');
+      lucide.createIcons();
+    }
+
+    function getSupportedMimeType() {
+      const types = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus'
+      ];
+
+      return types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+    }
+
+    function enablePlaybackControls() {
+      els.playAnalysisBtn.disabled = false;
+      els.pauseAnalysisBtn.disabled = false;
+      els.playAnalysisBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      els.pauseAnalysisBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      els.playbackSeek.disabled = false;
+      els.playbackSeek.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+
+
+    function updatePlaybackUI(time) {
+      const t = Math.max(0, Number(time || 0));
+      const total = Number(state.analysisDuration || els.audioPlayer.duration || 0);
+      els.playbackSeek.max = String(total || 0);
+      els.playbackSeek.value = String(Math.min(t, total || t));
+      els.playbackTime.textContent = formatTime(t);
+      els.playbackTotal.textContent = formatTime(total);
+    }
+
+    function formatTime(seconds) {
+      const s = Math.max(0, Number(seconds || 0));
+      const minutes = Math.floor(s / 60);
+      const rest = s - minutes * 60;
+      return `${String(minutes).padStart(2, '0')}:${rest.toFixed(2).padStart(5, '0')}`;
+    }
+
+    function playAnalysis() {
+      if (!state.recordedUrl) {
+        showToast('No recording available');
+        return;
+      }
+
+      els.audioPlayer.playbackRate = Number(els.playbackRate.value);
+      els.audioPlayer.play();
+      state.playingAnalysis = true;
+      playbackLoop();
+    }
+
+    function pauseAnalysis() {
+      els.audioPlayer.pause();
+      state.playingAnalysis = false;
+      if (state.playbackRaf) cancelAnimationFrame(state.playbackRaf);
+      updatePlaybackUI(els.audioPlayer.currentTime);
+      renderAll(els.audioPlayer.currentTime);
+    }
+
+    function playbackLoop() {
+      if (!state.playingAnalysis) return;
+      updatePlaybackUI(els.audioPlayer.currentTime);
+      updatePlaybackMetrics(els.audioPlayer.currentTime);
+      renderAll(els.audioPlayer.currentTime);
+      state.playbackRaf = requestAnimationFrame(playbackLoop);
+    }
+
+    function toggleFreeze() {
+      if (!state.running) return;
+
+      state.frozen = !state.frozen;
+      state.frozenNow = state.frozen ? getSessionSeconds() : null;
+
+      setStatus(
+        state.frozen ? 'Frozen' : (state.recording ? 'Recording' : 'Capturing'),
+        state.frozen ? 'bg-cyan-600 text-white' : (state.recording ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white')
+      );
+
+      if (!state.frozen) state.lastSpecTime = performance.now();
+
+      updateFreezeUI();
+      showToast(state.frozen ? 'Screen frozen' : 'Capture resumed');
+    }
+
+    function updateFreezeUI() {
+      if (state.frozen) {
+        els.freezeBtn.innerHTML = '<i data-lucide="play-circle" class="h-5 w-5"></i> Resume';
+        els.freezeBadge.classList.remove('hidden');
+      } else {
+        els.freezeBtn.innerHTML = '<i data-lucide="pause" class="h-5 w-5"></i> Freeze';
+        els.freezeBadge.classList.add('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    function setStatus(text, classes) {
+      els.statusBadge.className = `rounded-full px-3 py-1 text-xs font-bold ${classes}`;
+      els.statusBadge.textContent = text;
+    }
+
+    function loop() {
+      if (!state.running || !state.pitchAnalyser || !state.specAnalyser) return;
+
+      if (!state.frozen) {
+        state.pitchAnalyser.getFloatTimeDomainData(state.timeData);
+        state.specAnalyser.getByteFrequencyData(state.freqData);
+
+        const nowSeconds = getSessionSeconds();
+        const rms = getRms(state.timeData);
+
+        updateInputLevel(rms);
+        addWaveformSample(nowSeconds, rms);
+
+        let pitchResult = { pitch: null, clarity: 0 };
+
+        if (rms > state.settings.threshold) {
+          // Downsample signal to 16 kHz for low YIN CPU load
+          downsampleBuffer(state.timeData, state.downsampledTimeData, state.downsampleFactor);
+
+          pitchResult = yinPitch(
+            state.downsampledTimeData,
+            state.downsampledRate,
+            state.settings.minF0,
+            state.settings.maxF0
+          );
+        }
+
+        let pitch = pitchResult.pitch;
+
+        // Pitch hold: if RMS is voiced but YIN failed, carry last pitch forward
+        // for a short window to fill micro-gaps within voiced speech.
+        const MAX_HOLD_FRAMES = 5;
+        if (pitch) {
+          state.pitchHoldFrames = 0;
+          if (state.lastPitch) {
+            pitch = state.settings.smoothing * state.lastPitch + (1 - state.settings.smoothing) * pitch;
+          }
+          state.lastPitch = pitch;
+          state.pitchHistory.push({
+            time: nowSeconds,
+            pitch,
+            clarity: pitchResult.clarity,
+            rms
+          });
+        } else if (rms > state.settings.threshold && state.lastPitch && state.pitchHoldFrames < MAX_HOLD_FRAMES) {
+          // Sound is present but YIN failed — hold the last pitch briefly
+          state.pitchHoldFrames++;
+          pitch = state.lastPitch;
+          state.pitchHistory.push({
+            time: nowSeconds,
+            pitch,
+            clarity: 0,
+            rms
+          });
+        } else {
+          state.lastPitch = null;
+          state.pitchHoldFrames = 0;
+        }
+
+        pruneHistory(nowSeconds);
+        setPitchDisplay(pitch, pitchResult.clarity);
+        updateAcousticStatsUI();
+        updateSpectrogramBuffer();
+        renderAll(nowSeconds);
+      }
+
+      state.rafId = requestAnimationFrame(loop);
+    }
+
+    function getSessionSeconds() {
+      return (performance.now() - state.sessionStart) / 1000;
+    }
+
+    function getDisplayNow() {
+      if (state.recordedUrl) {
+        return els.audioPlayer.currentTime || 0;
+      }
+      if (state.frozenNow !== null) return state.frozenNow;
+      if (state.running) return getSessionSeconds();
+      if (state.analysisDuration) return state.analysisDuration;
+      return state.pitchHistory.length ? state.pitchHistory[state.pitchHistory.length - 1].time : 0;
+    }
+
+    function updateInputLevel(rms) {
+      const db = 20 * Math.log10(rms || 0.00001);
+      const volume = Math.min(100, Math.max(0, Math.round((db + 50) * 2)));
+      els.volumeBar.style.width = `${volume}%`;
+      els.volumePercent.textContent = `${volume}%`;
+      els.rmsValue.textContent = rms.toFixed(3);
+      els.volumeBar.className = `meter-bar h-full rounded-full ${rms > state.settings.threshold ? 'bg-emerald-500' : 'bg-blue-600'}`;
+    }
+
+    function addWaveformSample(time, rms) {
+      state.waveformHistory.push({ time, amp: rms });
+    }
+
+    function pruneHistory(nowSeconds) {
+      if (state.recording || state.recordedBlob || state.recordedUrl) return; // Do not prune during active recording or review
+      const keepFrom = nowSeconds - Math.max(state.settings.timeWindow + 1, 30);
+      state.pitchHistory = state.pitchHistory.filter(p => p.time >= keepFrom);
+      state.waveformHistory = state.waveformHistory.filter(p => p.time >= keepFrom);
+    }
+
+    function getRms(buffer) {
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i];
+      return Math.sqrt(sum / buffer.length);
+    }
+
+    function yinPitch(buffer, sampleRate, minF0, maxF0) {
+      const size = buffer.length;
+      const minTau = Math.floor(sampleRate / maxF0);
+      const maxTau = Math.min(Math.floor(sampleRate / minF0), size - 2);
+      const searchSize = Math.max(16, Math.min(size - maxTau, 2048));
+      
+      if (!state.yinBuffer || state.yinBuffer.length < maxTau + 1) {
+        state.yinBuffer = new Float32Array(maxTau + 1);
+      }
+      const yin = state.yinBuffer;
+
+      for (let tau = 1; tau <= maxTau; tau++) {
+        let sum = 0;
+        for (let i = 0; i < searchSize; i++) {
+          const d = buffer[i] - buffer[i + tau];
+          sum += d * d;
+        }
+        yin[tau] = sum;
+      }
+
+      yin[0] = 1;
+      let runningSum = 0;
+
+      for (let tau = 1; tau <= maxTau; tau++) {
+        runningSum += yin[tau];
+        yin[tau] = yin[tau] * tau / (runningSum || 1);
+      }
+
+      const threshold = state.settings.yinThreshold;
+      let tauEstimate = -1;
+
+      for (let tau = minTau; tau <= maxTau; tau++) {
+        if (yin[tau] < threshold) {
+          while (tau + 1 <= maxTau && yin[tau + 1] < yin[tau]) tau++;
+          tauEstimate = tau;
+          break;
+        }
+      }
+
+      if (tauEstimate === -1) return { pitch: null, clarity: 0 };
+
+      const betterTau = parabolicInterpolation(yin, tauEstimate);
+      const pitch = sampleRate / betterTau;
+      const clarity = Math.max(0, Math.min(1, 1 - yin[tauEstimate]));
+
+      if (pitch < minF0 || pitch > maxF0 || clarity < 0.45) return { pitch: null, clarity };
+      return { pitch, clarity };
+    }
+
+    function parabolicInterpolation(array, tau) {
+      const x0 = tau < 1 ? tau : tau - 1;
+      const x2 = tau + 1 < array.length ? tau + 1 : tau;
+      if (x0 === tau || x2 === tau) return tau;
+
+      const s0 = array[x0];
+      const s1 = array[tau];
+      const s2 = array[x2];
+
+      const denominator = 2 * (2 * s1 - s2 - s0);
+      if (denominator === 0) return tau;
+
+      return tau + (s2 - s0) / denominator;
+    }
+
+    function setPitchDisplay(pitch, clarity) {
+      if (pitch) {
+        els.pitchValue.textContent = pitch.toFixed(1);
+        els.noteValue.textContent = `Note: ${frequencyToNote(pitch)}`;
+        els.clarityValue.textContent = Math.round(clarity * 100);
+      } else {
+        els.pitchValue.textContent = '—';
+        els.noteValue.textContent = 'Note: —';
+        els.clarityValue.textContent = '—';
+      }
+
+      const voiced = state.pitchHistory.map(p => p.pitch);
+      if (voiced.length) {
+        const avg = voiced.reduce((a, b) => a + b, 0) / voiced.length;
+        const min = Math.min(...voiced);
+        const max = Math.max(...voiced);
+        els.avgValue.textContent = avg.toFixed(1);
+        els.rangeValue.textContent = `${min.toFixed(0)}–${max.toFixed(0)}`;
+      } else {
+        els.avgValue.textContent = '—';
+        els.rangeValue.textContent = '—';
+      }
+    }
+
+    function frequencyToNote(freq) {
+      const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+      const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+      const note = names[((midi % 12) + 12) % 12];
+      const octave = Math.floor(midi / 12) - 1;
+      const cents = Math.round(1200 * Math.log2(freq / (440 * Math.pow(2, (midi - 69) / 12))));
+      const sign = cents > 0 ? '+' : '';
+      return `${note}${note}${octave} (${sign}${cents} cents)`;
+    }
+
+    function renderAll(cursorTime = null) {
+      const now = cursorTime ?? getDisplayNow();
+      renderWaveform(now);
+      renderPitchTrace(now);
+      renderSpectrogram(now);
+    }
+
+    function renderWaveform(now) {
+      const ctx = waveformCtx;
+      const plot = getWaveformPlot();
+      const isDark = document.documentElement.classList.contains('dark');
+
+      ctx.setTransform(waveformCanvas._dpr, 0, 0, waveformCanvas._dpr, 0, 0);
+      ctx.clearRect(0, 0, waveformCanvas._cssW, waveformCanvas._cssH);
+      ctx.fillStyle = isDark ? '#020617' : '#ffffff';
+      ctx.fillRect(0, 0, waveformCanvas._cssW, waveformCanvas._cssH);
+
+      const start = Math.max(0, now - state.settings.timeWindow);
+      drawTimeGrid(ctx, plot, isDark, 'Amplitude');
+
+      const visible = state.waveformHistory.filter(p => p.time >= start && p.time <= now);
+
+      if (visible.length) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(plot.x, plot.y, plot.w, plot.h);
+        ctx.clip();
+
+        const mid = plot.y + plot.h / 2;
+
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        visible.forEach((point, index) => {
+          const x = plot.x + ((point.time - start) / state.settings.timeWindow) * plot.w;
+          const amp = Math.min(1, point.amp * 18);
+          const y = mid - amp * (plot.h / 2);
+
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+
+        for (let i = visible.length - 1; i >= 0; i--) {
+          const point = visible[i];
+          const x = plot.x + ((point.time - start) / state.settings.timeWindow) * plot.w;
+          const amp = Math.min(1, point.amp * 18);
+          const y = mid + amp * (plot.h / 2);
+          ctx.lineTo(x, y);
+        }
+
+        ctx.closePath();
+        ctx.globalAlpha = 0.26;
+        ctx.fillStyle = '#0ea5e9';
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      drawCursor(ctx, plot, now, start, '#ef4444');
+    }
+
+
+    function getMedianFilteredPitchPoints(points) {
+      const windowSize = Number(state.settings.pitchMedian || 1);
+      if (windowSize <= 1 || points.length < windowSize) return points;
+
+      const radius = Math.floor(windowSize / 2);
+
+      return points.map((point, index) => {
+        const values = [];
+
+        for (let offset = -radius; offset <= radius; offset++) {
+          const item = points[index + offset];
+          if (item && Number.isFinite(item.pitch)) values.push(item.pitch);
+        }
+
+        if (!values.length) return point;
+
+        values.sort((a, b) => a - b);
+        const median = values[Math.floor(values.length / 2)];
+        return { ...point, pitch: median };
+      });
+    }
+
+    function renderPitchTrace(now) {
+      const ctx = pitchCtx;
+      const plot = getPitchPlot();
+      const isDark = document.documentElement.classList.contains('dark');
+
+      ctx.setTransform(pitchCanvas._dpr, 0, 0, pitchCanvas._dpr, 0, 0);
+      ctx.clearRect(0, 0, pitchCanvas._cssW, pitchCanvas._cssH);
+      ctx.fillStyle = isDark ? '#020617' : '#ffffff';
+      ctx.fillRect(0, 0, pitchCanvas._cssW, pitchCanvas._cssH);
+
+      const start = Math.max(0, now - state.settings.timeWindow);
+
+      drawPitchGrid(ctx, plot, isDark);
+
+      // Render reference pitch trace in background (speaker comparison)
+      if (state.referencePitchHistory && state.referencePitchHistory.length > 0) {
+        renderReferencePitchTrace(ctx, plot, start, now);
+      }
+
+      const visibleRaw = state.pitchHistory.filter(p => p.time >= start && p.time <= now);
+      const visible = getMedianFilteredPitchPoints(visibleRaw);
+
+      if (visible.length) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(plot.x, plot.y, plot.w, plot.h);
+        ctx.clip();
+
+        ctx.lineWidth = state.settings.lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#2563eb';
+        ctx.shadowColor = '#0ea5e9';
+        ctx.shadowBlur = 14;
+
+        // Estimate the typical frame interval from the loop rate (~60fps → ~0.017s).
+        // Any gap larger than silenceGap seconds is treated as a silence break.
+        const frameInterval = visible.length > 1
+          ? (visible[visible.length - 1].time - visible[0].time) / (visible.length - 1)
+          : 0.02;
+        const silenceGap = Math.max(frameInterval * 3, 0.08); // at least 80 ms
+
+        ctx.beginPath();
+        let started = false;
+
+        visible.forEach((point, index) => {
+          const x = plot.x + ((point.time - start) / state.settings.timeWindow) * plot.w;
+          const y = pitchToY(point.pitch, plot);
+
+          const isSilenceBreak = index > 0 && (point.time - visible[index - 1].time) > silenceGap;
+
+          if (!started || isSilenceBreak) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+
+        ctx.stroke();
+
+        const last = visible[visible.length - 1];
+        const lx = plot.x + ((last.time - start) / state.settings.timeWindow) * plot.w;
+        const ly = pitchToY(last.pitch, plot);
+
+        ctx.fillStyle = '#0ea5e9';
+        ctx.beginPath();
+        ctx.arc(lx, ly, Math.max(4, state.settings.lineWidth / 1.4), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      drawCursor(ctx, plot, now, start, '#ef4444');
+    }
+
+    function pitchToY(pitch, plot) {
+      const viewMin = state.settings.pitchViewMin || state.settings.minF0;
+      const viewMax = state.settings.pitchViewMax || state.settings.maxF0;
+      return plot.y + plot.h - ((pitch - viewMin) / (viewMax - viewMin)) * plot.h;
+    }
+
+    function drawTimeGrid(ctx, plot, isDark, label) {
+      const grid = isDark ? 'rgba(148,163,184,.14)' : 'rgba(100,116,139,.17)';
+      const text = isDark ? 'rgba(203,213,225,.78)' : 'rgba(71,85,105,.86)';
+      const axis = isDark ? 'rgba(226,232,240,.46)' : 'rgba(51,65,85,.45)';
+
+      ctx.save();
+      ctx.font = '12px Inter, sans-serif';
+      ctx.textBaseline = 'middle';
+
+      const ticks = Math.min(10, state.settings.timeWindow);
+
+      for (let i = 0; i <= ticks; i++) {
+        const x = plot.x + (plot.w / ticks) * i;
+        const sec = Math.round(-state.settings.timeWindow + (state.settings.timeWindow / ticks) * i);
+
+        ctx.strokeStyle = grid;
+        ctx.beginPath();
+        ctx.moveTo(x, plot.y);
+        ctx.lineTo(x, plot.y + plot.h);
+        ctx.stroke();
+
+        ctx.fillStyle = text;
+        ctx.textAlign = 'center';
+        ctx.fillText(i === ticks ? '0s' : `${sec}s`, x, plot.y + plot.h + 18);
+      }
+
+      for (let i = 0; i <= 4; i++) {
+        const y = plot.y + (plot.h / 4) * i;
+        ctx.strokeStyle = grid;
+        ctx.beginPath();
+        ctx.moveTo(plot.x, y);
+        ctx.lineTo(plot.x + plot.w, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = axis;
+      ctx.strokeRect(plot.x, plot.y, plot.w, plot.h);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = text;
+      ctx.fillText(label, 14, plot.y + 12);
+      ctx.fillText('NOW', plot.x + plot.w - 32, plot.y + plot.h + 18);
+      ctx.restore();
+    }
+
+    function drawPitchGrid(ctx, plot, isDark) {
+      const grid = isDark ? 'rgba(148,163,184,.14)' : 'rgba(100,116,139,.17)';
+      const text = isDark ? 'rgba(203,213,225,.78)' : 'rgba(71,85,105,.86)';
+      const axis = isDark ? 'rgba(226,232,240,.46)' : 'rgba(51,65,85,.45)';
+
+      const viewMin = state.settings.pitchViewMin || state.settings.minF0;
+      const viewMax = state.settings.pitchViewMax || state.settings.maxF0;
+
+      ctx.save();
+      ctx.font = '12px Inter, sans-serif';
+      ctx.textBaseline = 'middle';
+
+      for (let i = 0; i <= 5; i++) {
+        const y = plot.y + (plot.h / 5) * i;
+        const hz = viewMax - ((viewMax - viewMin) / 5) * i;
+
+        ctx.strokeStyle = grid;
+        ctx.beginPath();
+        ctx.moveTo(plot.x, y);
+        ctx.lineTo(plot.x + plot.w, y);
+        ctx.stroke();
+
+        ctx.fillStyle = text;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${Math.round(hz)}`, plot.x - 8, y);
+      }
+
+      const ticks = Math.min(10, state.settings.timeWindow);
+
+      for (let i = 0; i <= ticks; i++) {
+        const x = plot.x + (plot.w / ticks) * i;
+        const sec = Math.round(-state.settings.timeWindow + (state.settings.timeWindow / ticks) * i);
+
+        ctx.strokeStyle = grid;
+        ctx.beginPath();
+        ctx.moveTo(x, plot.y);
+        ctx.lineTo(x, plot.y + plot.h);
+        ctx.stroke();
+
+        ctx.fillStyle = text;
+        ctx.textAlign = 'center';
+        ctx.fillText(i === ticks ? '0s' : `${sec}s`, x, plot.y + plot.h + 18);
+      }
+
+      ctx.strokeStyle = axis;
+      ctx.strokeRect(plot.x, plot.y, plot.w, plot.h);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = text;
+      ctx.fillText('Hz', 16, plot.y + 12);
+      ctx.fillText('NOW', plot.x + plot.w - 32, plot.y + plot.h + 18);
+      ctx.restore();
+    }
+
+
+    function hzToNorm(hz, maxHz) {
+      const scale = state.settings.frequencyScale || 'linear';
+      const safeHz = Math.max(0, Math.min(maxHz, hz));
+
+      if (scale === 'log') {
+        const minHz = 20;
+        return Math.log((safeHz + minHz) / minHz) / Math.log((maxHz + minHz) / minHz);
+      }
+
+      if (scale === 'mel') {
+        const mel = h => 2595 * Math.log10(1 + h / 700);
+        return mel(safeHz) / mel(maxHz);
+      }
+
+      return safeHz / maxHz;
+    }
+
+    function normToHz(norm, maxHz) {
+      const scale = state.settings.frequencyScale || 'linear';
+      const n = Math.max(0, Math.min(1, norm));
+
+      if (scale === 'log') {
+        const minHz = 20;
+        return minHz * (Math.pow((maxHz + minHz) / minHz, n) - 1);
+      }
+
+      if (scale === 'mel') {
+        const maxMel = 2595 * Math.log10(1 + maxHz / 700);
+        const melValue = n * maxMel;
+        return 700 * (Math.pow(10, melValue / 2595) - 1);
+      }
+
+      return n * maxHz;
+    }
+
+    function resetSpectrogramBuffer() {
+      const plot = getSpecPlot();
+      const h = Math.max(1, Math.round(plot.h));
+      const w = Math.max(1, Math.round(plot.w));
+      
+      const oldCanvas = state.largeSpecCanvas;
+      
+      state.largeSpecCanvas = document.createElement('canvas');
+      state.largeSpecCanvas.height = h;
+      state.largeSpecCanvas.width = oldCanvas ? Math.max(w, oldCanvas.width) : w;
+      state.largeSpecCtx = state.largeSpecCanvas.getContext('2d', { willReadFrequently: true });
+      state.largeSpecCtx.fillStyle = '#020617';
+      state.largeSpecCtx.fillRect(0, 0, state.largeSpecCanvas.width, state.largeSpecCanvas.height);
+      
+      if (oldCanvas) {
+        state.largeSpecCtx.drawImage(
+          oldCanvas,
+          0, 0, oldCanvas.width, oldCanvas.height,
+          0, 0, state.largeSpecCanvas.width, state.largeSpecCanvas.height
+        );
+      }
+      
+      state.lastSpecTime = performance.now();
+
+      state.specBuffer = document.createElement('canvas');
+      state.specBuffer.width = w;
+      state.specBuffer.height = h;
+      state.specBufferCtx = state.specBuffer.getContext('2d');
+      state.specBufferCtx.fillStyle = '#020617';
+      state.specBufferCtx.fillRect(0, 0, w, h);
+      
+      updatePrecomputedSpectrogramMapping();
+      updatePrecomputedColormap();
+    }
+
+    function updateSpectrogramBuffer() {
+      if (!state.freqData || !state.audioContext || !state.specAnalyser || !state.largeSpecCtx) return;
+
+      const now = performance.now();
+      const elapsed = Math.max(0, (now - (state.lastSpecTime || now)) / 1000);
+      state.lastSpecTime = now;
+
+      const pixelsPerSecond = getSpecPlot().w / state.settings.timeWindow;
+      const step = Math.max(1, Math.min(12, Math.round(elapsed * pixelsPerSecond)));
+
+      const h = Math.max(1, Math.round(getSpecPlot().h));
+      const nowSeconds = getSessionSeconds();
+      const xPos = Math.round(nowSeconds * pixelsPerSecond);
+
+      ensureLargeCanvasWidth(xPos + 50);
+
+      if (!state.specSliceImageData || state.specSliceImageData.width !== step || state.specSliceImageData.height !== h) {
+        state.specSliceImageData = state.largeSpecCtx.createImageData(step, h);
+      }
+      const data = state.specSliceImageData.data;
+
+      for (let y = 0; y < h; y++) {
+        const index = state.specYToFftIndex[y];
+        const value = state.freqData[index] || 0;
+        const colorOffset = value * 4;
+        const r = state.colormapTable[colorOffset];
+        const g = state.colormapTable[colorOffset + 1];
+        const b = state.colormapTable[colorOffset + 2];
+
+        for (let x = 0; x < step; x++) {
+          const offset = (y * step + x) * 4;
+          data[offset] = r;
+          data[offset + 1] = g;
+          data[offset + 2] = b;
+          data[offset + 3] = 255;
+        }
+      }
+
+      state.largeSpecCtx.putImageData(state.specSliceImageData, xPos - step, 0);
+    }
+
+    function colorMap(a, name) {
+      if (name === 'green') {
+        return [Math.floor(4 + a * 44), Math.floor(16 + a * 235), Math.floor(8 + a * 62)];
+      }
+      if (name === 'fire') {
+        return [Math.floor(10 + a * 245), Math.floor(8 + a * 160), Math.floor(4 + a * 34)];
+      }
+      if (name === 'magma') {
+        return [Math.floor(16 + a * 229), Math.floor(4 + a * 76), Math.floor(28 + a * 185)];
+      }
+      if (name === 'gray') {
+        const v = Math.floor(6 + a * 245);
+        return [v, v, v];
+      }
+      return [Math.floor(4 + a * 175), Math.floor(24 + a * 215), Math.floor(64 + a * 191)];
+    }
+
+    function renderSpectrogram(now) {
+      const ctx = specCtx;
+      const plot = getSpecPlot();
+
+      ctx.setTransform(specCanvas._dpr, 0, 0, specCanvas._dpr, 0, 0);
+      ctx.clearRect(0, 0, specCanvas._cssW, specCanvas._cssH);
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, specCanvas._cssW, specCanvas._cssH);
+
+      if (state.largeSpecCanvas) {
+        const pixelsPerSecond = plot.w / state.settings.timeWindow;
+        const start = Math.max(0, now - state.settings.timeWindow);
+        const sx = start * pixelsPerSecond;
+        const sw = (now - start) * pixelsPerSecond;
+        if (sw > 0) {
+          ctx.drawImage(
+            state.largeSpecCanvas,
+            sx, 0, sw, plot.h,
+            plot.x, plot.y, sw, plot.h
+          );
+        }
+      }
+
+      drawSpectrogramAxes(ctx, plot);
+
+      if (!state.running && !state.pitchHistory.length) {
+        ctx.fillStyle = 'rgba(255,255,255,.72)';
+        ctx.font = '14px Inter, sans-serif';
+        ctx.fillText('Start capture to view the live spectrogram.', plot.x + 20, plot.y + 32);
+        ctx.fillText('Record speech, then play it back with a synchronized cursor.', plot.x + 20, plot.y + 58);
+      }
+
+      const start = Math.max(0, now - state.settings.timeWindow);
+      drawCursor(ctx, plot, now, start, '#ef4444');
+    }
+
+    function drawSpectrogramAxes(ctx, plot) {
+      const maxHz = state.settings.spectrogramMaxHz;
+
+      ctx.save();
+
+      ctx.fillStyle = 'rgba(2,6,23,1)';
+      ctx.fillRect(0, 0, plot.x, specCanvas._cssH);
+      ctx.fillRect(0, plot.y + plot.h, specCanvas._cssW, specCanvas._cssH - (plot.y + plot.h));
+      ctx.fillRect(0, 0, specCanvas._cssW, plot.y);
+
+      ctx.font = '11px Inter, sans-serif';
+      ctx.textBaseline = 'middle';
+
+      let ticks;
+      if (maxHz <= 1000) ticks = [0, 250, 500, 750, 1000];
+      else if (maxHz <= 2000) ticks = [0, 500, 1000, 1500, 2000];
+      else if (maxHz <= 3000) ticks = [0, 500, 1000, 1500, 2000, 2500, 3000];
+      else if (maxHz <= 4000) ticks = [0, 1000, 2000, 3000, 4000];
+      else ticks = [0, 1000, 2000, 3000, 4000, 5000];
+
+      ticks.forEach(hz => {
+        if (hz > maxHz) return;
+
+        const y = plot.y + plot.h - hzToNorm(hz, maxHz) * plot.h;
+
+        ctx.fillStyle = 'rgba(255,255,255,.72)';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${hz} Hz`, 10, y);
+
+        ctx.strokeStyle = 'rgba(255,255,255,.08)';
+        ctx.beginPath();
+        ctx.moveTo(plot.x, y);
+        ctx.lineTo(plot.x + plot.w, y);
+        ctx.stroke();
+      });
+
+      /*
+        Clean guide lines. These are frequency rulers, not fixed formant labels.
+        They are only drawn when visible in the selected zoom range.
+      */
+      [1000, 2000, 3000].forEach(hz => {
+        if (hz > maxHz) return;
+        const y = plot.y + plot.h - hzToNorm(hz, maxHz) * plot.h;
+
+        ctx.strokeStyle = 'rgba(255,255,255,.24)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(plot.x, y);
+        ctx.lineTo(plot.x + plot.w, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(255,255,255,.82)';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${hz} Hz`, plot.x + 8, Math.max(plot.y + 12, y - 8));
+      });
+
+      const timeTicks = Math.min(10, state.settings.timeWindow);
+
+      for (let i = 0; i <= timeTicks; i++) {
+        const x = plot.x + (plot.w / timeTicks) * i;
+        const sec = Math.round(-state.settings.timeWindow + (state.settings.timeWindow / timeTicks) * i);
+
+        ctx.strokeStyle = 'rgba(255,255,255,.07)';
+        ctx.beginPath();
+        ctx.moveTo(x, plot.y);
+        ctx.lineTo(x, plot.y + plot.h);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255,255,255,.68)';
+        ctx.textAlign = 'center';
+        ctx.fillText(i === timeTicks ? '0s' : `${sec}s`, x, plot.y + plot.h + 18);
+      }
+
+      ctx.strokeStyle = 'rgba(255,255,255,.20)';
+      ctx.strokeRect(plot.x, plot.y, plot.w, plot.h);
+
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.textAlign = 'left';
+      ctx.fillText('NOW', plot.x + plot.w - 32, plot.y + plot.h + 18);
+
+      ctx.restore();
+    }
+
+    function drawCursor(ctx, plot, now, start, color) {
+      const x = plot.x + ((now - start) / state.settings.timeWindow) * plot.w;
+
+      if (x < plot.x || x > plot.x + plot.w) return;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, plot.y);
+      ctx.lineTo(x, plot.y + plot.h);
+      ctx.stroke();
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, plot.y + 6, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function clearCurrentSession() {
+      state.pitchHistory = [];
+      state.waveformHistory = [];
+      state.lastPitch = null;
+      state.pitchHoldFrames = 0;
+      state.sessionStart = performance.now();
+      state.frozenNow = null;
+      state.analysisDuration = null;
+
+      // Clear speaker comparison reference
+      state.referencePitchHistory = null;
+      els.setReferenceBtn.textContent = 'Set as Reference';
+      els.setReferenceBtn.className = 'rounded-xl bg-violet-600 px-3 py-3 text-sm font-bold text-white shadow hover:bg-violet-700';
+
+      resetSpectrogramBuffer();
+      setPitchDisplay(null, 0);
+      updateAcousticStatsUI(); // Clear UI stats
+      renderAll(0);
+      showToast('Current session cleared');
+    }
+
+    function getSessions() {
+      try { return JSON.parse(localStorage.getItem(SESSIONS_KEY)) || []; }
+      catch { return []; }
+    }
+
+    function saveSessions(sessions) {
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    }
+
+    function saveCurrentSession() {
+      if (!state.pitchHistory.length) {
+        showToast('No data to save');
+        return;
+      }
+
+      const pitches = state.pitchHistory.map(p => p.pitch);
+      const session = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        date: new Date().toLocaleString('en-GB'),
+        count: pitches.length,
+        avg: average(pitches),
+        min: Math.min(...pitches),
+        max: Math.max(...pitches),
+        data: state.pitchHistory
+      };
+
+      const sessions = [session, ...getSessions()].slice(0, 12);
+      saveSessions(sessions);
+      renderSessions();
+
+      const original = els.saveSessionBtn.textContent;
+      els.saveSessionBtn.textContent = 'Saved!';
+      els.saveSessionBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+      els.saveSessionBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+
+      showToast('Session saved');
+
+      setTimeout(() => {
+        els.saveSessionBtn.textContent = original;
+        els.saveSessionBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        els.saveSessionBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+      }, 1200);
+    }
+
+    function renderSessions() {
+      const sessions = getSessions();
+
+      if (!sessions.length) {
+        els.sessionsList.innerHTML = '<p class="text-slate-500 dark:text-slate-400">No saved sessions yet.</p>';
+        return;
+      }
+
+      els.sessionsList.innerHTML = sessions.map(s => `
+        <div class="flex flex-col gap-2 rounded-2xl bg-white/70 p-4 shadow-sm dark:bg-slate-900/60 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="font-extrabold">${s.date}</p>
+            <p class="text-slate-600 dark:text-slate-300">
+              Average: ${s.avg.toFixed(1)} Hz · Range: ${s.min.toFixed(0)}–${s.max.toFixed(0)} Hz · ${s.count} samples
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <button class="load-session rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700" data-id="${s.id}">Load</button>
+            <button class="delete-session rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700" data-id="${s.id}">Delete</button>
+          </div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.load-session').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const session = getSessions().find(s => s.id === btn.dataset.id);
+          if (session) {
+            loadSavedSession(session);
+          }
+        });
+      });
+
+      document.querySelectorAll('.delete-session').forEach(btn => {
+        btn.addEventListener('click', () => {
+          saveSessions(getSessions().filter(s => s.id !== btn.dataset.id));
+          renderSessions();
+          showToast('Session deleted');
+        });
+      });
+    }
+
+    function loadSavedSession(session) {
+      if (state.running) stop();
+      
+      // Load pitch history
+      state.pitchHistory = session.data || [];
+      // Waveform history is empty since it's not saved, but we can reconstruct a dummy or leave it empty
+      state.waveformHistory = [];
+      state.recordedBlob = null;
+      state.recordedUrl = null;
+      state.analysisDuration = state.pitchHistory.length ? state.pitchHistory[state.pitchHistory.length - 1].time : 0;
+      
+      // Clear audio player
+      els.audioPlayer.src = '';
+      els.recordingDuration.textContent = '—';
+      els.playbackSeek.max = '0';
+      els.playbackSeek.value = '0';
+      els.playbackSeek.disabled = true;
+      els.playbackSeek.classList.add('opacity-50', 'cursor-not-allowed');
+      els.playAnalysisBtn.disabled = true;
+      els.playAnalysisBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      els.pauseAnalysisBtn.disabled = true;
+      els.pauseAnalysisBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      // Clear spectrogram buffer (since spectrogram is not saved)
+      resetSpectrogramBuffer();
+      
+      // Set pitch displays
+      setPitchDisplay(null, 0);
+      
+      // Re-render and update stats
+      renderAll(state.analysisDuration);
+      updateAcousticStatsUI();
+      
+      showToast('Saved session loaded');
+    }
+
+    function exportCsv() {
+      if (!state.pitchHistory.length) {
+        showToast('No data to export');
+        return;
+      }
+
+      const header = 'time_seconds,pitch_hz,clarity,rms\n';
+      const rows = state.pitchHistory
+        .map(p => `${p.time.toFixed(3)},${p.pitch.toFixed(3)},${p.clarity.toFixed(4)},${p.rms.toFixed(5)}`)
+        .join('\n');
+
+      downloadBlob(header + rows, 'text/csv;charset=utf-8', `phonopitchlab_${timestamp()}.csv`);
+      showToast('CSV exported');
+    }
+
+    function exportImage() {
+      const margin = 24;
+      const titleH = 54;
+      const scale = 2;
+      const out = document.createElement('canvas');
+
+      const cssWidth = Math.round(Math.max(waveformCanvas._cssW, pitchCanvas._cssW, specCanvas._cssW) + margin * 2);
+      const cssHeight = Math.round(titleH + waveformCanvas._cssH + pitchCanvas._cssH + specCanvas._cssH + margin * 4);
+
+      out.width = cssWidth * scale;
+      out.height = cssHeight * scale;
+
+      const ctx = out.getContext('2d');
+      ctx.scale(scale, scale);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px Inter, sans-serif';
+      ctx.fillText('PhonoPitch Lab Capture', margin, 34);
+
+      ctx.font = '13px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.fillText(new Date().toLocaleString('en-GB'), margin + 265, 34);
+
+      let y = titleH;
+      ctx.drawImage(waveformCanvas, margin, y, waveformCanvas._cssW, waveformCanvas._cssH);
+      y += waveformCanvas._cssH + margin;
+      ctx.drawImage(pitchCanvas, margin, y, pitchCanvas._cssW, pitchCanvas._cssH);
+      y += pitchCanvas._cssH + margin;
+      ctx.drawImage(specCanvas, margin, y, specCanvas._cssW, specCanvas._cssH);
+
+      out.toBlob(blob => {
+        if (!blob) return;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `phonopitchlab_capture_${timestamp()}.png`;
+
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        URL.revokeObjectURL(url);
+        showToast('Image exported');
+      }, 'image/png');
+    }
+
+    function downloadBlob(content, type, filename) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      a.href = url;
+      a.download = filename;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    }
+
+    function timestamp() {
+      return new Date().toISOString().slice(0,19).replace(/[:T]/g, '-');
+    }
+
+    function showToast(message) {
+      els.toast.textContent = message;
+      els.toast.classList.remove('hidden', 'toast-in');
+      void els.toast.offsetWidth;
+      els.toast.classList.add('toast-in');
+
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => els.toast.classList.add('hidden'), 1600);
+    }
+
+    function toggleTheme() {
+      state.settings.dark = !state.settings.dark;
+      document.documentElement.classList.toggle('dark', state.settings.dark);
+      saveSettings();
+      renderAll(getDisplayNow());
+      lucide.createIcons();
+    }
+
+    function average(values) {
+      return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    }
+
+    init();
+  </script>
+</body>
+</html>
